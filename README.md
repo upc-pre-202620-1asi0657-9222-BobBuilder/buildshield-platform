@@ -89,3 +89,18 @@ siguientes agregan stock, pedidos, saga, despacho, recepción, discrepancias, no
 ```bash
 npx newman run postman/BuildShield-Microservices-E2E.postman_collection.json -e postman/BuildShield-local.postman_environment.json
 ```
+
+## Pruebas E2E con Python
+
+Con todo levantado (`run-all.ps1`) y, para la web, `npx ng serve` en `buildshield-web` (puerto 4200):
+
+| Script | Qué recorre |
+|---|---|
+| `e2e/api_flow_ordering_inventory.py` | saga de reserva (aprobado y rechazo sin stock), despacho, recepción parcial y conformidad, stock de la obra y cierre del pedido |
+| `e2e/api_flow_custody.py` | prueba gratuita, notificaciones, auditoría, discrepancia automática, evidencia por URL firmada y custodia |
+| `e2e/web_flow_sprint3.py <carpeta>` | la web con login real por rol (Playwright y Chrome instalado) y una captura por pantalla del Sprint 3 |
+
+```bash
+python -X utf8 e2e/api_flow_ordering_inventory.py
+python -X utf8 e2e/web_flow_sprint3.py capturas
+```
