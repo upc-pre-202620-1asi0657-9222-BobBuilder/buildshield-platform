@@ -15,8 +15,10 @@ class EmbeddedBrokerConfiguration {
     @Bean(destroyMethod = "destroy")
     EmbeddedKafkaKraftBroker embeddedKafkaBroker(DevKafkaProperties properties) {
         EmbeddedKafkaKraftBroker broker = new EmbeddedKafkaKraftBroker(1, properties.partitions(),
-                properties.topics().toArray(String[]::new))
-                .kafkaPorts(properties.port());
+                properties.topics().toArray(String[]::new));
+        // EmbeddedKafkaKraftBroker ignora kafkaPorts(): el puerto fijo se impone sobrescribiendo los
+        // listeners del nodo combinado (broker y controlador). El controlador sigue en un puerto libre.
+        broker.brokerProperty("listeners", "EXTERNAL://localhost:" + properties.port() + ",CONTROLLER://localhost:0");
         broker.brokerProperty("auto.create.topics.enable", "true");
         broker.brokerProperty("num.partitions", String.valueOf(properties.partitions()));
         broker.brokerProperty("offsets.topic.replication.factor", "1");
