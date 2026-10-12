@@ -43,6 +43,13 @@ $LogDir = Join-Path $PlatformRoot 'logs'
 $PidFile = Join-Path $LogDir 'run-all.pids'
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 
+# Temporary files (Kafka segments, Tomcat, uploads) go next to the repositories instead of %TEMP% on C:.
+# Child processes inherit TMP/TEMP, so java.io.tmpdir follows them.
+$TempDir = Join-Path (Split-Path -Qualifier $ReposRoot) 'tmp\buildshield'
+New-Item -ItemType Directory -Force -Path $TempDir | Out-Null
+$env:TMP = $TempDir
+$env:TEMP = $TempDir
+
 # name, repository folder, port, database (empty = none)
 $Services = @(
     @{ Name = 'kafka';        Repo = 'buildshield-platform\dev-kafka';    Port = 9092; Db = '' },
