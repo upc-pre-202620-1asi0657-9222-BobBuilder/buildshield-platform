@@ -7,18 +7,18 @@ skinparam state {
 }
 hide empty description
 [*] --> Registrado : el encargado de obra\ncrea el pedido
-Registrado --> Cancelado : cancelar
-Registrado --> EnRevision : el almacén lo abre
-EnRevision --> Rechazado : rechazar con motivo
-EnRevision --> Aprobando : aprobar\n(OrderApproved)
-Aprobando --> Aprobado : StockReserved
-Aprobando --> EnRevision : StockReservationRejected\n(motivo visible)
-Aprobado --> ParcialmenteAtendido : despacho parcial
-Aprobado --> Atendido : despacho total
+Registrado --> Aprobando : aprobar\n(OrderApproved)
+Registrado --> Cancelado : rechazar con motivo\no cancelar
+Aprobando --> EnRevision : StockReserved\n(stock reservado)
+Aprobando --> Registrado : StockReservationRejected\n(motivo visible)
+EnRevision --> ParcialmenteAtendido : despacho parcial
+EnRevision --> Atendido : despacho total
+EnRevision --> Cancelado : cancelar
 ParcialmenteAtendido --> ParcialmenteAtendido : nuevo despacho parcial
 ParcialmenteAtendido --> Atendido : se completa o se\ncancela lo pendiente
+ParcialmenteAtendido --> EnRevision : despacho anulado\nsin nada despachado
+Atendido --> ParcialmenteAtendido : despacho anulado
 Atendido --> Cerrado : sin discrepancias abiertas\n(OrderClosed)
-Rechazado --> [*]
 Cancelado --> [*]
 Cerrado --> [*]
 @enduml
