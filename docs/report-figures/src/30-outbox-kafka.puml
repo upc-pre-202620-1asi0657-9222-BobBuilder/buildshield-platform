@@ -1,0 +1,27 @@
+@startuml 30-outbox-kafka
+skinparam defaultFontName Arial
+title Transactional Outbox hacia Apache Kafka con el broker no disponible
+participant "Orders\nCommandService" as CS
+database "ordering_db\n(negocio y outbox_events)" as DB
+participant "Orders Outbox\nPublisher" as PUB
+queue "Apache Kafka\n(buildshield.ordering)" as K
+participant "Delivery Event Consumer\n(Inventario)" as CON
+database "inventory_db\n(processed_events)" as IDB
+autonumber
+CS -> DB : BEGIN
+CS -> DB : UPDATE despacho EnTransito
+CS -> DB : INSERT outbox_events (DispatchDeparted, published_at NULL)
+CS -> DB : COMMIT: el cambio y el evento quedan juntos o no queda ninguno
+PUB -> DB : SELECT pendientes FOR UPDATE SKIP LOCKED (cada 500 ms)
+PUB -> K : send(clave = aggregate_id)
+K --x PUB : broker no disponible
+note over DB : published_at sigue NULL:\nel evento no se pierde
+... el broker se recupera ...
+PUB -> DB : SELECT pendientes
+PUB -> K : send DispatchDeparted
+K --> PUB : confirmación
+PUB -> DB : UPDATE published_at
+K -> CON : entrega al menos una vez
+CON -> IDB : INSERT processed_events (event_id, consumer)\ny descuento del stock, en una transacción
+note over CON, IDB : si el (event_id, consumer) ya existe,\nel evento repetido se ignora
+@enduml

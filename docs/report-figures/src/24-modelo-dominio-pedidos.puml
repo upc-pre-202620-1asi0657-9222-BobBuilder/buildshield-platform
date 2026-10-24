@@ -1,0 +1,82 @@
+@startuml 24-modelo-dominio-pedidos
+!pragma layout smetana
+skinparam defaultFontName Arial
+skinparam classAttributeIconSize 0
+hide empty members
+title Modelo de dominio de Gestión de Pedidos y Entregas (ordering_db)
+package "Pedido" {
+  class Order <<aggregate root>> {
+    id: UUID
+    organizationId: UUID
+    worksiteId: UUID
+    warehouseId: UUID
+    status
+    requiredDate: LocalDate
+    rejectionReason
+  }
+  class OrderLine {
+    materialId: UUID
+    requestedQty
+    dispatchedQty
+    cancelledQty
+    pendiente()
+  }
+}
+package "Despacho y Transporte" {
+  class Dispatch <<aggregate root>> {
+    id: UUID
+    orderId: UUID
+    type
+    status
+    manifestCode
+    carrierName
+    carrierDocument
+    plate
+  }
+  class DispatchLine {
+    orderLineId: UUID
+    materialId: UUID
+    quantity
+  }
+  class DepartureWeighing {
+    grossKg
+    tareKg
+    netKg
+    ticketPhotoUrl
+  }
+  class TransitIncident {
+    type
+    observation
+    photoUrl
+  }
+}
+package "Recepción" {
+  class Reception <<aggregate root>> {
+    id: UUID
+    dispatchId: UUID {unique}
+    status
+    confirmedBy: UUID
+    confirmedAt
+  }
+  class ReceptionLine {
+    dispatchLineId: UUID
+    receivedQty
+    shrinkagePct
+  }
+  class ArrivalWeighing {
+    grossKg
+    tareKg
+    netKg
+    ticketPhotoUrl
+  }
+}
+Order "1" *-- "1..*" OrderLine
+Dispatch "1" *-- "1..*" DispatchLine
+Dispatch "1" *-- "0..1" DepartureWeighing
+Dispatch "1" *-- "0..*" TransitIncident
+Reception "1" *-- "1..*" ReceptionLine
+Reception "1" *-- "0..1" ArrivalWeighing
+Dispatch ..> Order : orderId
+Reception ..> Dispatch : dispatchId (una por despacho)
+note bottom of Order : materialId, worksiteId y warehouseId son\nreferencias lógicas a otras bases (solo el id)
+@enduml

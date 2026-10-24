@@ -1,0 +1,24 @@
+@startuml 21-estados-pedido
+!pragma layout smetana
+skinparam defaultFontName Arial
+skinparam state {
+  BackgroundColor #E8F1FB
+  BorderColor #2F6DB5
+}
+hide empty description
+[*] --> Registrado : el encargado de obra\ncrea el pedido
+Registrado --> Cancelado : cancelar
+Registrado --> EnRevision : el almacén lo abre
+EnRevision --> Rechazado : rechazar con motivo
+EnRevision --> Aprobando : aprobar\n(OrderApproved)
+Aprobando --> Aprobado : StockReserved
+Aprobando --> EnRevision : StockReservationRejected\n(motivo visible)
+Aprobado --> ParcialmenteAtendido : despacho parcial
+Aprobado --> Atendido : despacho total
+ParcialmenteAtendido --> ParcialmenteAtendido : nuevo despacho parcial
+ParcialmenteAtendido --> Atendido : se completa o se\ncancela lo pendiente
+Atendido --> Cerrado : sin discrepancias abiertas\n(OrderClosed)
+Rechazado --> [*]
+Cancelado --> [*]
+Cerrado --> [*]
+@enduml

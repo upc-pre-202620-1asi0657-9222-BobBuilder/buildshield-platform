@@ -1,0 +1,46 @@
+@startuml 29-saga-reserva-stock
+skinparam defaultFontName Arial
+skinparam sequenceMessageAlign left
+title Saga coreografiada de reserva de stock sobre Apache Kafka
+actor "Encargado de almacén" as WM
+actor "Encargado de obra" as SM
+participant "API Gateway" as GW
+participant "Gestión de Pedidos\ny Entregas" as ORD
+database "ordering_db" as ODB
+queue "Apache Kafka" as K
+participant "Inventario y\nExistencias" as INV
+database "inventory_db" as IDB
+participant "Gestión de\nDiscrepancias" as DIS
+autonumber
+WM -> GW : POST /orders/{id}/approve
+GW -> ORD : petición con JWT
+ORD -> ODB : pedido Aprobando y outbox OrderApproved\n(misma transacción)
+ORD --> WM : 200 Aprobando
+ORD -> K : Orders Outbox Publisher publica OrderApproved
+K -> INV : Delivery Event Consumer (idempotente)
+INV -> IDB : reserva con bloqueo optimista (version)
+alt stock suficiente
+  INV -> K : StockReserved
+  K -> ORD : Stock Event Consumer
+  ORD -> ODB : pedido Aprobado
+else stock insuficiente
+  INV -> K : StockReservationRejected (faltantes)
+  K -> ORD : Stock Event Consumer
+  ORD -> ODB : pedido vuelve a revisión con el motivo
+end
+== Salida del despacho ==
+WM -> ORD : confirmar salida
+ORD -> ODB : despacho EnTransito y outbox DispatchDeparted
+ORD -> K : DispatchDeparted
+K -> INV : consume la reserva y descuenta el almacén (sin stock negativo)
+== Recepción en obra ==
+SM -> ORD : POST /receptions/{id}/confirm (Idempotency-Key)
+ORD -> ODB : una recepción por despacho y outbox ReceptionConfirmed
+ORD -> K : ReceptionConfirmed
+K -> INV : suma a la obra solo la diferencia recibida
+K -> DIS : abre una discrepancia por línea fuera de tolerancia
+== Compensación ==
+WM -> ORD : anular despacho en EnPreparacion
+ORD -> ODB : despacho Anulado; lo despachado vuelve a lo pendiente
+note over ORD, INV : la reserva del pedido sigue vigente; no se devuelve stock\nporque todavía no se descontó. Al rechazar o cerrar el pedido\n(OrderRejected, OrderClosed) Inventario libera las reservas.
+@enduml
