@@ -80,7 +80,7 @@ pg_ctl -D "$env:LOCALAPPDATA\buildshield-local-pg" -o "-p 5433" start
 - Espera `/actuator/health` de cada servicio (por defecto hasta 180 s).
 - Logs en `logs/<svc>.log` (y `logs/<svc>.err.log`), PIDs en `logs/run-all.pids`.
 - Parámetros: `-ReposRoot <carpeta>` (por defecto la carpeta padre de este repo), `-Build`, `-Only iam,gateway`,
-  `-NoKafka`, `-SpringProfile`, `-DbHost`, `-DbPort`, `-KafkaBootstrapServers`, `-KeysDir`,
+  `-NoKafka`, `-SpringProfile`, `-DbHost`, `-DbPort`, `-DbSuffix` (`_e2e` usa `iam_e2e`, etc.; se crean con `create-databases.ps1 -DbSuffix _e2e`), `-KafkaBootstrapServers`, `-KeysDir`,
   `-HealthTimeoutSeconds`, `-CheckRefsOnly`.
 
 `stop-all.ps1` detiene los PIDs de `logs/run-all.pids` y, como respaldo, cualquier proceso `java` que siga

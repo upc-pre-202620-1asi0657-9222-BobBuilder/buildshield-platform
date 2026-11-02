@@ -31,6 +31,8 @@ param(
     [string]$SpringProfile = 'local',
     [string]$DbHost = '127.0.0.1',
     [int]$DbPort = 5433,
+    # Suffix of every database name (_db by default). -DbSuffix _e2e points the services at iam_e2e, ordering_e2e, ...
+    [string]$DbSuffix = '_db',
     [string]$KafkaBootstrapServers = 'localhost:9092',
     [string]$KeysDir = (Join-Path $HOME '.buildshield'),
     # Only these services (names: kafka, iam, organization, ..., gateway). Empty = all.
@@ -227,7 +229,7 @@ try {
             $role = "$($svc.Name)_service"
             $env:DB_HOST = $DbHost
             $env:DB_PORT = "$DbPort"
-            $env:DB_NAME = $svc.Db
+            $env:DB_NAME = $svc.Db -replace '_db$', $DbSuffix
             $env:DB_USER = $role
             $env:DB_PASSWORD = $role
         }
