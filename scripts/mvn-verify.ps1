@@ -31,6 +31,13 @@ New-Item -ItemType Directory -Force -Path $TempDir | Out-Null
 $env:TMP = $TempDir
 $env:TEMP = $TempDir
 
+# mvnw.cmd and mvn use JAVA_HOME; without it they could pick a newer JDK from PATH instead of JDK 21.
+if (-not $env:JAVA_HOME) {
+    $jdk = Get-ChildItem 'C:\Program Files\Java\jdk-21*' -Directory -ErrorAction SilentlyContinue |
+        Sort-Object FullName -Descending | Select-Object -First 1
+    if ($jdk) { $env:JAVA_HOME = $jdk.FullName }
+}
+
 $failed = @()
 foreach ($repo in $Repos) {
     $repoDir = Join-Path $ReposRoot $repo

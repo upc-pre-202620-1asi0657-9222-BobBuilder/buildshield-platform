@@ -4,7 +4,7 @@
 
 .DESCRIPTION
   First by the PIDs in logs\run-all.pids. Then, as a fallback, any java process still listening on the
-  BuildShield ports (8080 to 8088 and 9092). Compatible with PowerShell 5.1.
+  BuildShield ports (8080 to 8088 and 9092). It never stops PostgreSQL. Compatible with PowerShell 5.1.
 
 .EXAMPLE
   .\scripts\stop-all.ps1

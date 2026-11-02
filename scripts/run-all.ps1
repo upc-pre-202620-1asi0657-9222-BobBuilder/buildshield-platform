@@ -10,6 +10,9 @@
   Logs go to logs\<svc>.log (stderr to logs\<svc>.err.log) and PIDs to logs\run-all.pids.
   Services whose repository or jar does not exist yet are skipped with a warning.
   Ports already listening are skipped too (assumed to be running).
+  It runs whatever each repository has checked out and never changes a branch. It only warns when a service does
+  not contain the reference it was last integrated on; -CheckRefsOnly prints that check and exits.
+  It does not start or stop PostgreSQL.
   Requirements: PostgreSQL cluster on 127.0.0.1:5433 with the 8 databases (scripts\create-databases.ps1),
   JWT keys in ~\.buildshield\jwt-private.pem and jwt-public.pem, JDK 21. Compatible with PowerShell 5.1.
 
@@ -17,6 +20,7 @@
   .\scripts\run-all.ps1
   .\scripts\run-all.ps1 -Build
   .\scripts\run-all.ps1 -ReposRoot E:\obsidian\funda\repos -Only iam,organization -NoKafka
+  .\scripts\run-all.ps1 -CheckRefsOnly
 #>
 [CmdletBinding()]
 param(
@@ -32,7 +36,9 @@ param(
     # Only these services (names: kafka, iam, organization, ..., gateway). Empty = all.
     [string[]]$Only = @(),
     [switch]$NoKafka,
-    [int]$HealthTimeoutSeconds = 180
+    [int]$HealthTimeoutSeconds = 180,
+    # Only prints which services contain their integration reference, then exits. Starts nothing.
+    [switch]$CheckRefsOnly
 )
 $ErrorActionPreference = 'Stop'
 
@@ -50,21 +56,43 @@ New-Item -ItemType Directory -Force -Path $TempDir | Out-Null
 $env:TMP = $TempDir
 $env:TEMP = $TempDir
 
-# name, repository folder, port, database (empty = none)
+# name, repository folder, port, database (empty = none), reference the service was last integrated on (empty = any).
 $Services = @(
-    @{ Name = 'kafka';        Repo = 'buildshield-platform\dev-kafka';    Port = 9092; Db = '' },
-    @{ Name = 'iam';          Repo = 'buildshield-iam-service';           Port = 8081; Db = 'iam_db' },
-    @{ Name = 'organization'; Repo = 'buildshield-organization-service';  Port = 8082; Db = 'organization_db' },
-    @{ Name = 'inventory';    Repo = 'buildshield-inventory-service';     Port = 8083; Db = 'inventory_db' },
-    @{ Name = 'ordering';     Repo = 'buildshield-ordering-service';      Port = 8084; Db = 'ordering_db' },
-    @{ Name = 'discrepancy';  Repo = 'buildshield-discrepancy-service';   Port = 8085; Db = 'discrepancy_db' },
-    @{ Name = 'subscription'; Repo = 'buildshield-subscription-service';  Port = 8086; Db = 'subscription_db' },
-    @{ Name = 'notification'; Repo = 'buildshield-notification-service';  Port = 8087; Db = 'notification_db' },
-    @{ Name = 'audit';        Repo = 'buildshield-audit-service';         Port = 8088; Db = 'audit_db' },
-    @{ Name = 'gateway';      Repo = 'buildshield-api-gateway';           Port = 8080; Db = '' }
+    @{ Name = 'kafka';        Repo = 'buildshield-platform\dev-kafka';    Port = 9092; Db = '';                Ref = '' },
+    @{ Name = 'iam';          Repo = 'buildshield-iam-service';           Port = 8081; Db = 'iam_db';          Ref = 'origin/develop' },
+    @{ Name = 'organization'; Repo = 'buildshield-organization-service';  Port = 8082; Db = 'organization_db'; Ref = 'feature/erd-alignment' },
+    @{ Name = 'inventory';    Repo = 'buildshield-inventory-service';     Port = 8083; Db = 'inventory_db';    Ref = 'feature/erd-alignment' },
+    @{ Name = 'ordering';     Repo = 'buildshield-ordering-service';      Port = 8084; Db = 'ordering_db';     Ref = 'feature/erd-alignment' },
+    @{ Name = 'discrepancy';  Repo = 'buildshield-discrepancy-service';   Port = 8085; Db = 'discrepancy_db';  Ref = 'feature/erd-alignment' },
+    @{ Name = 'subscription'; Repo = 'buildshield-subscription-service';  Port = 8086; Db = 'subscription_db'; Ref = 'feature/erd-alignment' },
+    @{ Name = 'notification'; Repo = 'buildshield-notification-service';  Port = 8087; Db = 'notification_db'; Ref = 'feature/erd-alignment' },
+    @{ Name = 'audit';        Repo = 'buildshield-audit-service';         Port = 8088; Db = 'audit_db';        Ref = 'origin/develop' },
+    @{ Name = 'gateway';      Repo = 'buildshield-api-gateway';           Port = 8080; Db = '';                Ref = '' }
 )
 if ($NoKafka) { $Services = @($Services | Where-Object { $_.Name -ne 'kafka' }) }
 if ($Only.Count -gt 0) { $Services = @($Services | Where-Object { $Only -contains $_.Name }) }
+
+# A warning, never an error: a repository can be ahead of its reference or on another branch on purpose, and a clone
+# without that reference is not checked.
+function Test-IntegrationRefs {
+    if (-not (Get-Command git -ErrorAction SilentlyContinue)) { return }
+    foreach ($svc in $Services) {
+        $repoDir = Join-Path $ReposRoot $svc.Repo
+        if (-not $svc.Ref -or -not (Test-Path $repoDir)) { continue }
+        & git -C $repoDir rev-parse --verify --quiet "$($svc.Ref)^{commit}" | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "[$($svc.Name)] reference $($svc.Ref) not found in this clone: not checked."
+            continue
+        }
+        $head = (& git -C $repoDir rev-parse --abbrev-ref HEAD)
+        & git -C $repoDir merge-base --is-ancestor $svc.Ref HEAD
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "[$($svc.Name)] on $head, contains $($svc.Ref)."
+        } else {
+            Write-Warning "[$($svc.Name)] on $head, which does not contain $($svc.Ref): E2E results may not match the integrated code."
+        }
+    }
+}
 
 function Find-Java {
     if ($env:JAVA_HOME -and (Test-Path (Join-Path $env:JAVA_HOME 'bin\java.exe'))) {
@@ -122,7 +150,12 @@ function Test-Health([int]$port) {
     }
 }
 
+Test-IntegrationRefs
+if ($CheckRefsOnly) { return }
+
 $java = Find-Java
+# mvnw.cmd and mvn use JAVA_HOME; without it they could pick a newer JDK from PATH instead of JDK 21.
+if (-not $env:JAVA_HOME -and $java -like '*\jdk-21*') { $env:JAVA_HOME = Split-Path -Parent (Split-Path -Parent $java) }
 $publicKeyFile = Join-Path $KeysDir 'jwt-public.pem'
 $privateKeyFile = Join-Path $KeysDir 'jwt-private.pem'
 if (-not (Test-Path $publicKeyFile) -or -not (Test-Path $privateKeyFile)) {
