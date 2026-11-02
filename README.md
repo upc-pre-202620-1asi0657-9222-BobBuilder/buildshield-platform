@@ -24,6 +24,27 @@ Cada servicio se conecta a su base con el rol `<svc>_service` (contraseña igual
 el valor por defecto de `DB_USER`/`DB_PASSWORD` en los servicios. En el clúster local la autenticación es
 trust; las contraseñas solo importan en Docker.
 
+## Ramas integradas
+
+Los scripts y compose usan lo que cada repositorio hermano tenga en su carpeta y no cambian de rama. La última
+integración se hizo sobre estas referencias:
+
+| Repositorio | Referencia |
+|---|---|
+| `buildshield-organization-service`, `-inventory-service`, `-ordering-service`, `-discrepancy-service`, `-subscription-service`, `-notification-service` | `feature/erd-alignment` |
+| `buildshield-iam-service`, `buildshield-audit-service` | `origin/develop` |
+| `buildshield-api-gateway`, `buildshield-platform` | `feature/v4-alignment` |
+
+`.\scripts\run-all.ps1 -CheckRefsOnly` dice qué servicios contienen su referencia, sin levantar nada. Para dejar iam y
+audit en su referencia sin tocar sus ramas locales:
+
+```powershell
+git -C ..\buildshield-iam-service fetch origin
+git -C ..\buildshield-iam-service switch --detach origin/develop
+git -C ..\buildshield-audit-service fetch origin
+git -C ..\buildshield-audit-service switch --detach origin/develop
+```
+
 ## Local sin Docker (Windows)
 
 Requisitos: JDK 21, PostgreSQL en `127.0.0.1:5433` (autenticación trust, superusuario `buildshield_core`),
@@ -53,14 +74,17 @@ pg_ctl -D "$env:LOCALAPPDATA\buildshield-local-pg" -o "-p 5433" start
   `DB_USER`/`DB_PASSWORD=<svc>_service`, `KAFKA_BOOTSTRAP_SERVERS=localhost:9092`, `BUILDSHIELD_JWT_PUBLIC_KEY`
   (todos) y `BUILDSHIELD_JWT_PRIVATE_KEY` (solo IAM), leídas de `~/.buildshield/*.pem`.
 - Omite con una advertencia los servicios cuyo repositorio o JAR no existe todavía y los puertos ya ocupados.
+- Avisa si un servicio no contiene su referencia integrada, sin detenerse ni cambiar de rama. El JAR de `target/` puede
+  ser de otra rama: usa `-Build` después de cambiar de rama.
+- No arranca ni detiene PostgreSQL.
 - Espera `/actuator/health` de cada servicio (por defecto hasta 180 s).
 - Logs en `logs/<svc>.log` (y `logs/<svc>.err.log`), PIDs en `logs/run-all.pids`.
 - Parámetros: `-ReposRoot <carpeta>` (por defecto la carpeta padre de este repo), `-Build`, `-Only iam,gateway`,
   `-NoKafka`, `-SpringProfile`, `-DbHost`, `-DbPort`, `-KafkaBootstrapServers`, `-KeysDir`,
-  `-HealthTimeoutSeconds`.
+  `-HealthTimeoutSeconds`, `-CheckRefsOnly`.
 
 `stop-all.ps1` detiene los PIDs de `logs/run-all.pids` y, como respaldo, cualquier proceso `java` que siga
-escuchando en 8080 a 8088 o 9092 (`-NoPortFallback` lo desactiva).
+escuchando en 8080 a 8088 o 9092 (`-NoPortFallback` lo desactiva). PostgreSQL no se toca.
 
 `dev-kafka` es un broker KRaft embebido (spring-kafka-test) en `localhost:9092`. Los mensajes viven mientras
 el proceso está arriba. Para correrlo solo: `cd dev-kafka; .\mvnw.cmd package; java -jar target\dev-kafka-0.1.0-SNAPSHOT.jar`.
@@ -76,15 +100,17 @@ Levanta 8 PostgreSQL 16 (uno por servicio, se eligió así en vez de una instanc
 reflejar "una base por microservicio"), Kafka KRaft (`apache/kafka`) con un contenedor que crea los 6 tópicos,
 los 8 servicios, el gateway (8080) y la web (4200, nginx con `/api` hacia el gateway). Mientras no existan todos
 los repositorios se puede levantar una parte: `docker compose up -d --build api-gateway iam-service organization-service`.
-La imagen de la web se construye con `docker/web/Dockerfile` sin tocar el repositorio de la web.
+La imagen de la web se construye con `docker/web/Dockerfile` sin tocar el repositorio de la web. Las fotos de evidencia
+van a `/tmp` del contenedor de discrepancy y se pierden al recrearlo.
 
 ## Postman
 
 `postman/BuildShield-Microservices-E2E.postman_collection.json` con el entorno
-`postman/BuildShield-local.postman_environment.json` (`baseUrl=http://localhost:8080`). Por ahora cubre:
-comprobaciones del gateway (salud, 401 sin token, `X-Correlation-Id`), registro, inicio de sesión, usuarios,
-obra, almacén, material y asignaciones. Se basa en la colección Sprint 2 de `buildshield-core`. Las etapas
-siguientes agregan stock, pedidos, saga, despacho, recepción, discrepancias, notificaciones y auditoría.
+`postman/BuildShield-local.postman_environment.json` (`baseUrl=http://localhost:8080`). Cubre: comprobaciones del
+gateway (salud, 401 sin token, `X-Correlation-Id`), registro, inicio de sesión, usuarios, obra, almacén, material,
+asignaciones, stock, pedido con saga, despacho, recepción, discrepancia manual con su seguimiento, devolución de saldos
+y conteo con revisión y ajuste. No cubre notificaciones ni auditoría, que están en `e2e/api_flow_custody.py`. Las
+carpetas se ejecutan en orden. Lo que depende de un evento se reintenta hasta `maxAttempts` veces, una por segundo.
 
 ```bash
 npx newman run postman/BuildShield-Microservices-E2E.postman_collection.json -e postman/BuildShield-local.postman_environment.json
@@ -98,9 +124,12 @@ Con todo levantado (`run-all.ps1`) y, para la web, `npx ng serve` en `buildshiel
 |---|---|
 | `e2e/api_flow_ordering_inventory.py` | saga de reserva (aprobado y rechazo sin stock), despacho, recepción parcial y conformidad, stock de la obra y cierre del pedido |
 | `e2e/api_flow_custody.py` | prueba gratuita, notificaciones, auditoría, discrepancia automática, evidencia por URL firmada y custodia |
+| `e2e/api_flow_count_discrepancy_return.py` | discrepancia manual con respuesta, escalamiento y resolución; devolución de saldos rechazada, anulada y completa con rechazo parcial; conteo con diferencias, revisión y ajuste, conteo sin diferencias y conteo anulado |
 | `e2e/web_flow_sprint3.py <carpeta>` | la web con login real por rol (Playwright y Chrome instalado) y una captura por pantalla del Sprint 3 |
 
 ```bash
 python -X utf8 e2e/api_flow_ordering_inventory.py
+python -X utf8 e2e/api_flow_custody.py
+python -X utf8 e2e/api_flow_count_discrepancy_return.py
 python -X utf8 e2e/web_flow_sprint3.py capturas
 ```
