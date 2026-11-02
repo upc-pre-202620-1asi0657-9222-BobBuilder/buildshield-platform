@@ -20,3 +20,9 @@ target/
 .env
 *.log
 logs/
+
+### Terraform ###
+.terraform/
+*.tfstate
+*.tfstate.*
+terraform.tfvars
