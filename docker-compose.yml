@@ -8,6 +8,9 @@
 #   docker compose up -d --build                         # todo
 #   docker compose up -d --build api-gateway iam-service organization-service   # solo lo que ya existe
 #
+# Cada imagen se construye con lo que el repositorio hermano tenga en su carpeta: compose no cambia de rama. Las ramas
+# integradas y los comandos para dejarlas están en el README.
+#
 # Web: http://localhost:4200 · Gateway: http://localhost:8080 · Swagger: http://localhost:8080/swagger-ui.html
 # Kafka desde el host: localhost:9094.
 #
@@ -187,6 +190,8 @@ services:
       DB_NAME: discrepancy_db
       DB_USER: discrepancy_service
       DB_PASSWORD: discrepancy_service
+      # La imagen corre sin root y no puede escribir en /app. Las fotos no sobreviven a recrear el contenedor.
+      EVIDENCE_LOCAL_DIR: /tmp/buildshield-evidence
   subscription-service:
     <<: *service
     build: ../buildshield-subscription-service
@@ -245,7 +250,7 @@ services:
       SUBSCRIPTION_URI: http://subscription-service:8086
       NOTIFICATION_URI: http://notification-service:8087
       AUDIT_URI: http://audit-service:8088
-    # El gateway no espera a los servicios: arranca solo y responde 5xx en la ruta del que no esté arriba.
+    # El gateway no espera a los servicios: arranca solo y responde 503 en la ruta del que no esté arriba.
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health | grep -q UP"]
       interval: 10s
