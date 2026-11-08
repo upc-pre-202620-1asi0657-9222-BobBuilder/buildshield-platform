@@ -21,3 +21,9 @@ target/
 *.log
 logs/
 __pycache__/
+
+### Terraform ###
+.terraform/
+*.tfstate
+*.tfstate.*
+terraform.tfvars

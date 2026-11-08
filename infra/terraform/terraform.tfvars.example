@@ -1,0 +1,10 @@
+# Copia este archivo como terraform.tfvars. Ese archivo no se sube al repositorio.
+stripe_secret_key = "sk_test_reemplazar"
+
+# Se completa después del primer apply, al crear el webhook en Stripe con la URL de stripe_webhook_url.
+# stripe_webhook_secret = "whsec_reemplazar"
+
+# Para desplegar como la Figura 94 (cuesta bastante más):
+# desired_count = 2
+# db_multi_az   = true
+# kafka_mode    = "msk"
