@@ -1,0 +1,148 @@
+@startuml 24-modelo-dominio-pedidos
+!pragma layout smetana
+skinparam defaultFontName Arial
+skinparam classAttributeIconSize 0
+hide empty members
+title Modelo de dominio de Gestión de Pedidos y Entregas (ordering_db)
+package "Pedido" {
+  class Order <<aggregate root>> {
+    id: UUID
+    organizationId: UUID
+    worksiteId: UUID
+    warehouseId: UUID
+    status: OrderStatus
+    requiredDate: LocalDate [0..1]
+    notes: String [0..1]
+    rejectionReason: String [0..1]
+    decidedBy: UUID [0..1]
+    decidedAt: Instant [0..1]
+    createdBy: UUID
+    createdAt: Instant
+    version: long
+  }
+  class OrderLine {
+    id: UUID
+    materialId: UUID
+    requestedQty: BigDecimal
+    dispatchedQty: BigDecimal
+    cancelledQty: BigDecimal
+    pendiente(): BigDecimal
+    cancelRemaining()
+  }
+  enum OrderStatus {
+    REGISTERED
+    APPROVAL_PENDING
+    IN_REVIEW
+    PARTIALLY_FULFILLED
+    FULFILLED
+    CLOSED
+    CANCELLED
+  }
+}
+package "Despacho y Transporte" {
+  class Dispatch <<aggregate root>> {
+    id: UUID
+    organizationId: UUID
+    orderId: UUID [0..1]
+    warehouseId: UUID
+    worksiteId: UUID
+    type: DispatchType
+    status: DispatchStatus
+    manifestCode: ManifestCode
+    carrier: Carrier [0..1]
+    departedAt: Instant [0..1]
+    cancelledBy: UUID [0..1]
+    cancelledAt: Instant [0..1]
+    cancellationReason: String [0..1]
+    createdAt: Instant
+    version: long
+  }
+  class Carrier <<value object>> {
+    carrierName: String
+    carrierDocument: String
+    plate: String
+  }
+  class DispatchLine {
+    id: UUID
+    orderLineId: UUID [0..1]
+    materialId: UUID
+    quantity: BigDecimal
+  }
+  class DepartureWeighing {
+    id: UUID
+    grossKg: BigDecimal
+    tareKg: BigDecimal
+    netKg: BigDecimal
+    ticketPhotoUrl: String [0..1]
+    weighedBy: UUID
+    weighedAt: Instant
+  }
+  class TransitIncident {
+    id: UUID
+    type: IncidentType
+    observation: String
+    photoUrl: String [0..1]
+    createdBy: UUID
+    createdAt: Instant
+  }
+  enum DispatchType {
+    COMPLETE
+    PARTIAL
+    RETURN
+  }
+  enum DispatchStatus {
+    PREPARED
+    IN_TRANSIT
+    RECEIVED
+    CANCELLED
+  }
+}
+package "Recepción" {
+  class Reception <<aggregate root>> {
+    id: UUID
+    organizationId: UUID
+    dispatchId: UUID {unique}
+    status: ReceptionStatus
+    confirmedBy: UUID [0..1]
+    confirmedAt: Instant [0..1]
+    partialCount: int
+    lastPartialAt: Instant [0..1]
+    version: long
+  }
+  class ReceptionLine {
+    id: UUID
+    dispatchLineId: UUID
+    receivedQty: BigDecimal [0..1]
+    stockedQty: BigDecimal
+    shrinkagePct: BigDecimal [0..1]
+  }
+  class ArrivalWeighing {
+    id: UUID
+    grossKg: BigDecimal
+    tareKg: BigDecimal
+    netKg: BigDecimal
+    tolerancePct: BigDecimal [0..1]
+    ticketPhotoUrl: String [0..1]
+    weighedBy: UUID
+    weighedAt: Instant
+  }
+  enum ReceptionStatus {
+    IN_PROGRESS
+    PARTIALLY_RECEIVED
+    CONFIRMED
+  }
+}
+Order "1" *-- "1..*" OrderLine
+Dispatch "1" *-- "1..*" DispatchLine
+Dispatch "1" *-- "0..1" Carrier
+Dispatch "1" *-- "0..1" DepartureWeighing
+Dispatch "1" *-- "0..*" TransitIncident
+Reception "1" *-- "1..*" ReceptionLine
+Reception "1" *-- "0..1" ArrivalWeighing
+Dispatch "0..*" ..> "0..1" Order : orderId\n(nulo en RETURN)
+DispatchLine ..> OrderLine : orderLineId
+Reception "0..1" ..> "1" Dispatch : dispatchId\n(una por despacho)
+ReceptionLine ..> DispatchLine : dispatchLineId
+note bottom of Order : worksiteId, warehouseId, materialId y los *By son\nreferencias lógicas a otras bases (solo el id).\nTodas las clases llevan organizationId.
+note bottom of Dispatch : Un despacho RETURN no tiene pedido:\nwarehouseId y worksiteId dicen de dónde a dónde va.
+@enduml

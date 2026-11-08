@@ -1,0 +1,16 @@
+@startuml 22-estados-despacho
+!pragma layout smetana
+skinparam defaultFontName Arial
+skinparam state {
+  BackgroundColor #E8F1FB
+  BorderColor #2F6DB5
+}
+hide empty description
+[*] --> Preparado : el almacén registra\nlas cantidades
+Preparado --> Anulado : anular\n(solo antes de la salida;\nlo despachado vuelve a lo pendiente)
+Preparado --> EnTransito : confirmar salida con transportista\ny pesaje (DispatchDeparted:\nInventario descuenta)
+EnTransito --> Recibido : recepción confirmada\n(ReceptionConfirmed)
+Anulado --> [*]
+Recibido --> [*]
+note right of EnTransito : un despacho en tránsito no se anula;\nlas diferencias se registran en la recepción\ny abren discrepancias si superan la tolerancia
+@enduml

@@ -1,0 +1,50 @@
+@startuml 30-1-secuencia-recepcion
+skinparam defaultFontName Arial
+skinparam sequenceMessageAlign left
+skinparam noteBackgroundColor #FFF8DC
+title Recepción en obra (US33 y US34) con las tácticas que aborda cada paso
+actor "Encargado de obra" as SM
+participant "API Gateway" as GW
+participant "Orders Controller" as C
+participant "Orders\nCommandService" as CS
+participant "Orders\nQueryService" as QS
+database "ordering_db" as DB
+participant "Orders Outbox\nPublisher" as PUB
+queue "Apache Kafka" as K
+participant "Inventario" as INV
+participant "Gestión de\nDiscrepancias" as DIS
+participant "Trazabilidad\ny Auditoría" as AUD
+autonumber
+SM -> GW : POST /api/v1/receptions {dispatchId}
+GW -> GW : valida JWT y organización
+note right of GW : QAS04: autorización en el Gateway\ny de nuevo en el servicio
+GW -> C : petición con JWT y X-Correlation-Id
+C -> CS : abrir recepción
+CS -> DB : INSERT receptions (dispatch_id UNIQUE)
+note right of DB : QAS10: restricción única,\nuna recepción por despacho
+C --> SM : 201 recepción abierta
+SM -> C : GET /api/v1/receptions/{id}/comparison
+C -> QS : cotejo
+QS -> DB : lectura local de pedido, despacho y recepción
+note right of QS : QAS01: lectura en la base propia,\nsin llamadas a otros servicios (< 2 s p95)
+C --> SM : solicitado, despachado y recibido por material
+SM -> C : PUT /receptions/{id}/lines/{lineId} (cantidad recibida)
+C -> CS : registrar línea
+CS -> DB : UPDATE reception_lines (merma frente a la tolerancia)
+SM -> C : POST /receptions/{id}/confirm\nIdempotency-Key: k1
+C -> DB : buscar (k1, organization_id) en idempotency_keys
+note right of DB : QAS10: clave de idempotencia
+CS -> DB : BEGIN; recepción confirmada;\nINSERT outbox_events (ReceptionConfirmed);\nINSERT idempotency_keys (k1, respuesta); COMMIT
+note right of DB : RNF02 y QAS05: Transactional Outbox,\nel cambio y el evento quedan juntos
+C --> SM : 200 recepción confirmada
+... la red del celular se corta y la aplicación reintenta ...
+SM -> C : POST /receptions/{id}/confirm\nIdempotency-Key: k1 (misma clave)
+C -> DB : la clave k1 ya existe
+C --> SM : 200 la misma respuesta, sin segunda recepción
+PUB -> DB : pendientes FOR UPDATE SKIP LOCKED
+PUB -> K : ReceptionConfirmed (clave = receptionId)
+K -> INV : suma a la obra solo la diferencia recibida
+K -> DIS : abre una discrepancia por línea fuera de tolerancia
+K -> AUD : registra la custodia con hash SHA-256
+note over INV, AUD : consumidores idempotentes: processed_events (event_id, consumer)
+@enduml
