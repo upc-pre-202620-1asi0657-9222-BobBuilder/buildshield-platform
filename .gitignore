@@ -20,3 +20,4 @@ target/
 .env
 *.log
 logs/
+__pycache__/

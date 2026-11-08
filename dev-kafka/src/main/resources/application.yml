@@ -1,0 +1,26 @@
+spring:
+  application:
+    name: dev-kafka
+  main:
+    # Sin servidor web: el proceso sigue vivo mientras el broker esté arriba.
+    keep-alive: true
+    web-application-type: none
+
+devkafka:
+  port: ${KAFKA_PORT:9092}
+  partitions: 3
+  # Un tópico por contexto que publica (plan de microservicios, sección 5).
+  topics:
+    - buildshield.iam
+    - buildshield.organization
+    - buildshield.inventory
+    - buildshield.ordering
+    - buildshield.discrepancy
+    - buildshield.subscription
+
+logging:
+  level:
+    org.apache.kafka: WARN
+    kafka: WARN
+    org.apache.zookeeper: WARN
+    state.change.logger: WARN
