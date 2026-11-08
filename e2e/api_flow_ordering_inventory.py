@@ -1,4 +1,5 @@
 """Flujo real de la etapa B1 a través del gateway (http://localhost:8080): saga de reserva, despacho y recepción."""
+import datetime
 import json
 import random
 import sys
@@ -56,6 +57,7 @@ def retry(method, path, body, token, expect, idem=False, timeout=30):
 def main():
     run = random.randint(100000000, 999999999)
     pwd = "Segura123"
+    required_date = (datetime.date.today() + datetime.timedelta(days=14)).isoformat()
     admin_email = f"ana.{run}@andina.pe"
     call("POST", "/api/v1/auth/sign-up", {"ruc": f"20{run}", "legalName": f"Constructora Andina {run} SAC",
                                          "adminFullName": "Ana Torres", "adminEmail": admin_email, "password": pwd},
@@ -74,10 +76,11 @@ def main():
                                                       "address": "Av. Argentina 2500, Callao"}, admin, expect=201)
     _, material = call("POST", "/api/v1/materials", {"sku": f"CEM-{run % 1000:03d}", "name": "Cemento Portland tipo I",
                                                     "unit": "BAG", "wasteTolerancePercent": 2.5}, admin, expect=201)
-    call("POST", "/api/v1/assignments", {"userId": site_user["id"], "siteType": "WORKSITE", "siteId": worksite["id"]},
-         admin, expect=201)
-    call("POST", "/api/v1/assignments", {"userId": wh_user["id"], "siteType": "WAREHOUSE", "siteId": warehouse["id"]},
-         admin, expect=201)
+    # organization conoce a los usuarios por el evento UserCreated: puede tardar un momento.
+    retry("POST", "/api/v1/assignments", {"userId": site_user["id"], "siteType": "WORKSITE", "siteId": worksite["id"]},
+          admin, 201)
+    retry("POST", "/api/v1/assignments", {"userId": wh_user["id"], "siteType": "WAREHOUSE", "siteId": warehouse["id"]},
+          admin, 201)
     _, s = call("POST", "/api/v1/auth/sign-in", {"email": f"jorge.{run}@andina.pe", "password": pwd}, expect=200)
     site = s["accessToken"]
     _, w = call("POST", "/api/v1/auth/sign-in", {"email": f"rosa.{run}@andina.pe", "password": pwd}, expect=200)
@@ -89,10 +92,10 @@ def main():
 
     # Pedido en ordering (espera sus proyecciones) y aprobación asíncrona (saga).
     order = retry("POST", "/api/v1/orders", {"worksiteId": worksite["id"], "warehouseId": warehouse["id"],
-                                             "requiredDate": "2026-11-20", "notes": "Losa piso 3",
+                                             "requiredDate": required_date, "notes": "Losa piso 3",
                                              "lines": [{"materialId": material["id"], "quantity": 40}]},
                   site, 201, idem=True)
-    assert order["requiredDate"] == "2026-11-20", order
+    assert order["requiredDate"] == required_date, order
     _, approving = call("POST", f"/api/v1/orders/{order['id']}/approve", None, wh, idem=True, expect=200)
     print("  estado tras aprobar:", approving["status"], approving.get("statusLabel"))
     until("pedido IN_REVIEW tras StockReserved",
@@ -106,7 +109,7 @@ def main():
 
     # Pedido sin stock: vuelve a REGISTERED con el motivo.
     short = call("POST", "/api/v1/orders", {"worksiteId": worksite["id"], "warehouseId": warehouse["id"],
-                                            "requiredDate": "2026-11-21",
+                                            "requiredDate": required_date,
                                             "lines": [{"materialId": material["id"], "quantity": 500}]},
                  site, idem=True, expect=201)[1]
     call("POST", f"/api/v1/orders/{short['id']}/approve", None, wh, idem=True, expect=200)

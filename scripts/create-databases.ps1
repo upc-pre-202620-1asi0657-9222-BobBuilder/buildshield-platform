@@ -4,6 +4,8 @@ param(
     [int]$Port = 5433,
     [string]$User = 'buildshield_core',
     [string]$PsqlPath,
+    # Sufijo de las bases (_db por defecto). Con _e2e crea iam_e2e, ordering_e2e, etc. sin tocar las _db.
+    [string]$DbSuffix = '_db',
     # Crea además las bases temporales de las pruebas de integración (<svc>_it).
     [switch]$WithTestDatabases
 )
@@ -21,7 +23,7 @@ if (-not $PsqlPath) {
 if (-not $PsqlPath) { throw 'No se encontró psql. Indica -PsqlPath.' }
 
 $sql = Join-Path $PSScriptRoot 'create-databases.sql'
-& $PsqlPath -h $PgHost -p $Port -U $User -d postgres -v ON_ERROR_STOP=1 -f $sql
+& $PsqlPath -h $PgHost -p $Port -U $User -d postgres -v ON_ERROR_STOP=1 -v db_suffix=$DbSuffix -f $sql
 if ($LASTEXITCODE -ne 0) { throw 'No se pudieron crear las bases' }
 
 if ($WithTestDatabases) {
@@ -34,4 +36,4 @@ if ($WithTestDatabases) {
     }
 }
 
-& $PsqlPath -h $PgHost -p $Port -U $User -d postgres -Atc "SELECT datname FROM pg_database WHERE datname LIKE '%\_db' OR datname LIKE '%\_it' ORDER BY 1"
+& $PsqlPath -h $PgHost -p $Port -U $User -d postgres -Atc "SELECT datname FROM pg_database WHERE datname LIKE '%\_db' OR datname LIKE '%\_it' OR datname LIKE '%$DbSuffix' ORDER BY 1"

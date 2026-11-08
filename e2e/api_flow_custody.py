@@ -1,12 +1,15 @@
-"""E2E de la etapa B2 por el gateway (http://localhost:8080)."""
+"""E2E de la etapa B2 por el gateway (http://localhost:8080). Termina con código 1 si alguna comprobación falla."""
+import datetime
 import json
 import random
+import sys
 import time
 import urllib.error
 import urllib.request
 import uuid
 
 BASE = "http://localhost:8080"
+FAILURES = []
 
 
 def call(method, path, body=None, token=None, key=False, raw=False):
@@ -33,6 +36,7 @@ def call(method, path, body=None, token=None, key=False, raw=False):
 def ok(label, status, body, expected=(200, 201, 202, 204)):
     print(f"[{'OK' if status in expected else 'FAIL'}] {label}: {status}")
     if status not in expected:
+        FAILURES.append(label)
         print("    ", json.dumps(body, ensure_ascii=False)[:600] if not isinstance(body, bytes) else body)
     return body
 
@@ -46,6 +50,7 @@ def wait_for(label, fn, timeout=30):
             return result
         time.sleep(1)
     print(f"[FAIL] {label} (timeout)")
+    FAILURES.append(label)
     return None
 
 
@@ -92,8 +97,9 @@ s, b = call("POST", "/api/v1/materials", {"sku": f"CEM-{run}", "name": "Cemento 
 material = ok("material", s, b)["id"]
 for uid, st, sid in [(users["SITE_MANAGER"], "WORKSITE", worksite), (users["WAREHOUSE_MANAGER"], "WAREHOUSE",
                                                                       warehouse)]:
-    s, b = call("POST", "/api/v1/assignments", {"userId": uid, "siteType": st, "siteId": sid}, token=admin, key=True)
-    ok(f"asignación {st}", s, b)
+    # organization conoce a los usuarios por el evento UserCreated: puede tardar un momento.
+    wait_for(f"asignación {st}", lambda: call("POST", "/api/v1/assignments", {"userId": uid, "siteType": st, "siteId": sid},
+                                              token=admin, key=True)[0] == 201)
 
 s, b = call("GET", "/api/v1/audit/events?size=100", token=admin)
 ok("audit/events", s, b)
@@ -109,7 +115,8 @@ s, b = call("POST", "/api/v1/stock/entries", {"warehouseId": warehouse, "materia
 ok("stock entry", s, b)
 order = None
 def place():
-    st, bd = call("POST", "/api/v1/orders", {"worksiteId": worksite, "warehouseId": warehouse,
+    required = (datetime.date.today() + datetime.timedelta(days=14)).isoformat()
+    st, bd = call("POST", "/api/v1/orders", {"worksiteId": worksite, "warehouseId": warehouse, "requiredDate": required,
                                              "lines": [{"materialId": material, "quantity": 40}]}, token=site, key=True)
     return bd if st == 201 else None
 order = wait_for("pedido registrado", place)
@@ -164,9 +171,6 @@ if order:
             print(f"[OK] evidencia subida: {resp.status} url={evidence['url'][:90]}...")
         s, b = call("GET", evidence["url"], raw=True)
         ok("foto por la url firmada sin Authorization (vía gateway)", s, b if s != 200 else "imagen", expected=(200,))
-        with urllib.request.urlopen("http://localhost:8085" + evidence["url"], timeout=30) as resp:
-            print(f"[OK] foto directa en discrepancy-service (8085) sin Authorization: {resp.status} "
-                  f"{resp.headers.get('Content-Type')} {len(resp.read())} bytes")
         ok("responder", *call("POST", f"/api/v1/discrepancies/{d['id']}/response", {"text": "Se repone mañana"},
                               token=wh, key=True))
         wait_for("aviso de respuesta al encargado de obra", lambda: any(
@@ -177,3 +181,8 @@ if order:
     if custody:
         print("     custodia", custody["manifestCode"], [(e["type"], e["actorName"], e["detail"]) for e in
                                                       custody["events"]])
+
+if FAILURES:
+    print("FALLARON:", FAILURES)
+    sys.exit(1)
+print("RESULTADO: flujo completo OK")

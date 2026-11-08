@@ -1,0 +1,16 @@
+@startuml 23-estados-discrepancia
+!pragma layout smetana
+skinparam defaultFontName Arial
+skinparam state {
+  BackgroundColor #E8F1FB
+  BorderColor #2F6DB5
+}
+hide empty description
+[*] --> Abierta : ReceptionConfirmed con línea fuera\nde tolerancia, o registro del encargado de obra
+Abierta --> Respondida : el almacén responde
+Respondida --> Aceptada : la obra acepta la respuesta
+Respondida --> Escalada : la obra escala
+Escalada --> Resuelta : el administrador decide
+Aceptada --> [*]
+Resuelta --> [*]
+@enduml
